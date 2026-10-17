@@ -384,10 +384,10 @@ button[data-label]:hover::after {display: block;}
 .table-container .data-table tr td.actions .action-dropdown.up .action-menu {top: auto; bottom: 100%;}
 
 /* Status in een tabel: een omlijnd label met een gekleurde stip */
-.table-container .status-badge {display: inline-flex; align-items: center; gap: 6px; padding: 2px var(--space10) 2px 7px; border: 1px solid var(--border-color); border-radius: var(--border-radius1); background: var(--color2); color: var(--font-color1); font-size: var(--fontsize2); font-weight: 500; line-height: 1.5; white-space: nowrap;}
-.table-container .status-badge::before {content: ''; width: 6px; height: 6px; flex: 0 0 auto; border-radius: 50%; background: var(--font-color2);}
-.table-container .status-badge.status-sent::before {background: var(--color5);}
-.table-container .status-badge.status-paid::before {background: var(--color7);}
+.table-container .status-badge, .site-window .status-badge {display: inline-flex; align-items: center; gap: 6px; padding: 2px var(--space10) 2px 7px; border: 1px solid var(--border-color); border-radius: var(--border-radius1); background: var(--color2); color: var(--font-color1); font-size: var(--fontsize2); font-weight: 500; line-height: 1.5; white-space: nowrap;}
+.table-container .status-badge::before, .site-window .status-badge::before {content: ''; width: 6px; height: 6px; flex: 0 0 auto; border-radius: 50%; background: var(--font-color2);}
+.table-container .status-badge.status-sent::before, .site-window .status-badge.status-sent::before {background: var(--color5);}
+.table-container .status-badge.status-paid::before, .site-window .status-badge.status-paid::before {background: var(--color7);}
 .table-container .status-badge.status-cancelled::before {background: var(--color6);}
 
 /* Bladeren onder een lange tabel */

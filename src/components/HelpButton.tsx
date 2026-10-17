@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { CircleQuestionMark } from 'lucide-react';
 import SidePanel from '@/components/SidePanel';
 import { HELP } from '@/lib/help';
@@ -7,6 +8,9 @@ import { HELP } from '@/lib/help';
  * Het vraagteken naast de titel van een pagina. Een klik opent rechts het
  * paneel met uitleg over die module; de teksten staan in lib/help.
  * Zelfde knop en paneel als de uitleg bij de sjablonen in Instellingen.
+ *
+ * De knop staat in de titel, maar het paneel wordt los aan het eind van de
+ * pagina getekend; anders erft alle tekst erin de opmaak van die h1.
  */
 export default function HelpButton({ topic }: { topic: keyof typeof HELP }) {
   const [open, setOpen] = useState(false);
@@ -25,7 +29,7 @@ export default function HelpButton({ topic }: { topic: keyof typeof HELP }) {
         <CircleQuestionMark size={16} />
       </button>
 
-      {open && (
+      {open && createPortal(
         <SidePanel title={help.title} onClose={() => setOpen(false)}>
           {help.intro.map((paragraph) => (
             <p key={paragraph}>{paragraph}</p>
@@ -40,7 +44,8 @@ export default function HelpButton({ topic }: { topic: keyof typeof HELP }) {
               </ul>
             </div>
           ))}
-        </SidePanel>
+        </SidePanel>,
+        document.body
       )}
     </>
   );

@@ -3,7 +3,7 @@ import Link from 'next/link';
 import type { GetStaticPaths, GetStaticProps } from 'next';
 import { ArrowLeft, Check } from 'lucide-react';
 import SiteLayout from '@/components/site/SiteLayout';
-import { MODULES, ModuleCell, findModule } from '@/components/site/modules';
+import { MODULES, ModuleCell, ModuleDemo, findModule } from '@/components/site/modules';
 
 /**
  * De pagina van één module op synbased.com: wat hij doet, hoe het werkt en
@@ -98,17 +98,9 @@ export default function ModulePage({ slug }: { slug: string }) {
         <div className="site-container">
           <div className="site-section-head">
             <span className="site-eyebrow">Zo werkt het</span>
-            <h2>In drie stappen.</h2>
+            <h2>Zo ziet het eruit in Synbased.</h2>
           </div>
-          <div className="site-grid three">
-            {module.steps.map(({ title, text }, index) => (
-              <div key={title} className="site-grid-cell">
-                <span className="site-step">{String(index + 1).padStart(2, '0')}</span>
-                <h3>{title}</h3>
-                <p>{text}</p>
-              </div>
-            ))}
-          </div>
+          <ModuleDemo key={module.slug} module={module} />
         </div>
       </section>
 
