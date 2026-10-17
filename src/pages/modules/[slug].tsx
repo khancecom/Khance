@@ -3,7 +3,8 @@ import Link from 'next/link';
 import type { GetStaticPaths, GetStaticProps } from 'next';
 import { ArrowLeft, Check } from 'lucide-react';
 import SiteLayout from '@/components/site/SiteLayout';
-import { MODULES, ModuleCell, ModuleDemo, findModule } from '@/components/site/modules';
+import { MODULES, ModuleCell, findModule } from '@/components/site/modules';
+import ModuleDemo from '@/components/site/ModuleDemo';
 
 /**
  * De pagina van één module op synbased.com: wat hij doet, hoe het werkt en

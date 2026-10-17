@@ -219,17 +219,6 @@ export default function Reports() {
               </Table>
             </div>
           </div>
-
-          <div className="grid">
-            <div className="block">
-              <p className="field-note">
-                Berekend uit je facturen, kosten en banktransacties. Staan er nog banktransacties op &quot;te
-                verwerken&quot;, koppel die dan eerst bij Bank. Dit is geen officiële jaarrekening: afschrijvingen op
-                investeringen vanaf € 450, voorraad en fiscale regelingen zoals de zelfstandigenaftrek zitten er niet in.
-                Laat je boekhouder ernaar kijken voor je aangifte inkomstenbelasting.
-              </p>
-            </div>
-          </div>
         </>
       )}
     </Layout>

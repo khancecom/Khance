@@ -211,12 +211,6 @@ export default function Vat() {
                   </td>
                 </tr>
               </Table>
-              <p className="field-note">
-                Neem deze bedragen over in Mijn Belastingdienst Zakelijk; de Belastingdienst rondt af op hele euro's.
-                Omzet telt op factuurdatum (verstuurd en betaald, creditfacturen als min-bedrag, geen concepten), kosten
-                op de datum van de bon. Bij btw verlegd, of leveringen naar of uit het buitenland, horen bedragen in
-                andere rubrieken; kijk dat na met je boekhouder.
-              </p>
             </>
           )}
         </div>

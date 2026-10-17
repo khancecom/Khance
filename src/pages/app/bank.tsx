@@ -244,10 +244,7 @@ export default function Bank() {
         <div className="empty-state">
           <Landmark size={22} />
           <h2>Nog geen bankrekening</h2>
-          <p>
-            Download in je bank-app een afschrift als CAMT.053 (XML) of MT940 en importeer het hier, of koppel je
-            bank bij Instellingen &gt; Plug-ins. Betalingen van klanten worden dan vanzelf aan hun factuur gekoppeld.
-          </p>
+          <p>Importeer een afschrift uit je bank-app, of koppel je bank bij Plug-ins.</p>
         </div>
       ) : (
         <>

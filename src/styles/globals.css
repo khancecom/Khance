@@ -585,7 +585,7 @@ h1 .help:hover, h2 .help:hover, h3 .help:hover {background: var(--color4); color
 .modal .modal-title h3 {margin: 0;}
 .modal .modal-content .buttons {display: flex; gap: var(--space10); justify-content: flex-end; margin: var(--space20) 0 0 0;}
 
-.modal-container {position: fixed; top: 0; right: 0; bottom: 0; z-index: 11; width: 100%; max-width: 700px; background: var(--color2); border-left: 1px solid var(--border-color); padding: var(--space20); box-sizing: border-box; overflow-y: auto; box-shadow: rgba(0, 0, 0, 0.1) -10px 0px 15px -3px; animation: slideInPanel .25s ease-out;}
+.modal-container {position: fixed; top: 0; right: 0; bottom: 0; z-index: 11; width: 100%; max-width: 500px; background: var(--color2); border-left: 1px solid var(--border-color); padding: var(--space20); box-sizing: border-box; overflow-y: auto; box-shadow: rgba(0, 0, 0, 0.1) -10px 0px 15px -3px; animation: slideInPanel .25s ease-out;}
 .modal-container .header {display: flex; align-items: center; justify-content: space-between; margin: 0 0 var(--space20) 0;}
 .modal-container .header h2 {margin: 0;}
 .modal-container .header button {color: var(--font-color2); line-height: 0; padding: var(--space5);}
