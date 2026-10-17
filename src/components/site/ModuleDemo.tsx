@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createContext, Fragment, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import Image from 'next/image';
 import {
   ChartColumn,
@@ -39,7 +39,24 @@ const APP_HEIGHT = 766;
 /** Zo lang staat elke stap, voor hij doorschuift */
 const STEP_MS = 7500;
 
-const DemoTime = createContext<{ t: number; root: HTMLDivElement | null; zoom: number }>({ t: 0, root: null, zoom: 1 });
+const DemoTime = createContext<{ t: number; root: HTMLDivElement | null }>({ t: 0, root: null });
+
+/**
+ * Waar een element in de app staat, in de maten van de app zelf. Via
+ * offsetLeft en offsetTop, want die veranderen niet als de app verkleind of
+ * door de camera ingezoomd is.
+ */
+function positionIn(element: HTMLElement, root: HTMLElement) {
+  let x = 0;
+  let y = 0;
+  let node: HTMLElement | null = element;
+  while (node && node !== root) {
+    x += node.offsetLeft;
+    y += node.offsetTop;
+    node = node.offsetParent as HTMLElement | null;
+  }
+  return { x, y, width: element.offsetWidth, height: element.offsetHeight };
+}
 const useT = () => useContext(DemoTime).t;
 
 const clamp = (value: number) => Math.min(1, Math.max(0, value));
@@ -126,7 +143,7 @@ function Toast({ at, title, message }: { at: number; title: string; message: str
   const t = useT();
   if (t < at) return null;
   return (
-    <div className="toast success">
+    <div data-demo="toast" className="toast success">
       <CircleCheck size={16} />
       <div className="toast-content">
         <div className="toast-title">{title}</div>
@@ -142,7 +159,7 @@ function Dialog({ from, until = 99, title, children }: { from: number; until?: n
   if (t < from || t >= until) return null;
   return (
     <div className="modal-overlay">
-      <div className="modal">
+      <div data-demo="dialog" className="modal">
         <div className="modal-title">
           <h3>{title}</h3>
         </div>
@@ -154,27 +171,28 @@ function Dialog({ from, until = 99, title, children }: { from: number; until?: n
 
 /**
  * De muiscursor. Hij loopt een route af: bij elk moment `at` beweegt hij naar
- * het element met data-demo="target" en klikt een seconde later. Posities
- * worden gemeten in het venster en omgerekend naar de verkleinde app, dus ze
- * kloppen bij elke grootte.
+ * het element met data-demo="target" en klikt een seconde later. Hij staat in
+ * de app zelf, dus hij beweegt mee als de camera inzoomt; bij het klikken
+ * krimpt hij vanuit zijn punt, zodat hij niet verspringt.
  */
 function Cursor({ path }: { path: [string, number][] }) {
-  const { t, root, zoom } = useContext(DemoTime);
+  const { t, root } = useContext(DemoTime);
   const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
   const step = [...path].reverse().find(([, at]) => t >= at);
   const target = step?.[0];
 
+  // Het doel kan pas later verschijnen; tot die tijd elke kwart seconde opnieuw kijken
+  const [found, setFound] = useState<string | null>(null);
+  const retry = target && found !== target ? Math.floor(t * 4) : 0;
+
   useEffect(() => {
     if (!target || !root) return;
-    const element = root.querySelector(`[data-demo="${target}"]`);
+    const element = root.querySelector<HTMLElement>(`[data-demo="${target}"]`);
     if (!element) return;
-    const box = element.getBoundingClientRect();
-    const frame = root.getBoundingClientRect();
-    setPosition({
-      x: (box.left - frame.left + box.width * 0.55) / zoom,
-      y: (box.top - frame.top + box.height * 0.6) / zoom,
-    });
-  }, [target, root, zoom]);
+    const box = positionIn(element, root);
+    setPosition({ x: box.x + box.width * 0.55, y: box.y + box.height * 0.6 });
+    setFound(target);
+  }, [target, root, retry]);
 
   // Pas zichtbaar vlak voor de eerste beweging, en weg als de laatste klik voorbij is
   if (t < path[0][1] - 0.4 || t > path[path.length - 1][1] + 2.2) return null;
@@ -184,8 +202,9 @@ function Cursor({ path }: { path: [string, number][] }) {
   return (
     <MousePointer2
       className={`site-cursor${clicking ? ' clicking' : ''}`}
-      size={Math.round(22 / zoom)}
-      style={{ transform: `translate(${x}px, ${y}px)` }}
+      size={20}
+      // Bewegen met translate en klikken met scale: zo krimpt hij op zijn plek
+      style={{ translate: `${x}px ${y}px` }}
     />
   );
 }
@@ -193,10 +212,18 @@ function Cursor({ path }: { path: [string, number][] }) {
 // ---------- Bouwstenen ----------
 
 /** Een tabel zoals de lijsten in de app; rijen verschijnen op hun moment */
-function DataTable({ headers, rows }: { headers: string[]; rows: { at?: number; cells: ReactNode[]; highlight?: boolean }[] }) {
+function DataTable({
+  id = 'table',
+  headers,
+  rows,
+}: {
+  id?: string;
+  headers: string[];
+  rows: { at?: number; cells: ReactNode[]; highlight?: boolean; id?: string }[];
+}) {
   const t = useT();
   return (
-    <div className="table-container">
+    <div data-demo={id} className="table-container">
       <table className="data-table">
         <thead>
           <tr>
@@ -209,7 +236,7 @@ function DataTable({ headers, rows }: { headers: string[]; rows: { at?: number; 
           {rows
             .filter(row => t >= (row.at ?? 0))
             .map((row, index) => (
-              <tr key={index} className={`${row.at ? 'site-appear' : ''}${row.highlight ? ' selected' : ''}`}>
+              <tr key={index} data-demo={row.id} className={`${row.at && row.at > 0 ? 'site-appear' : ''}${row.highlight ? ' selected' : ''}`}>
                 {row.cells.map((cell, cellIndex) => (
                   <td key={cellIndex}>{cell}</td>
                 ))}
@@ -225,7 +252,7 @@ function DataTable({ headers, rows }: { headers: string[]; rows: { at?: number; 
 function Stats({ items, at = 0.3 }: { items: { label: string; value: number; note: string; format?: (n: number) => string }[]; at?: number }) {
   const t = useT();
   return (
-    <div className="grid four">
+    <div data-demo="stats" className="grid four">
       {items.map((item) => (
         <div key={item.label} className="block stat">
           <span className="label">{item.label}</span>
@@ -238,12 +265,12 @@ function Stats({ items, at = 0.3 }: { items: { label: string; value: number; not
 }
 
 /** Een veld zoals in de formulieren van de app, met tekst die wordt getypt */
-function Field({ label, text, at, perSecond }: { label: string; text: string; at: number; perSecond?: number }) {
+function Field({ id, label, text, at, perSecond }: { id?: string; label: string; text: string; at: number; perSecond?: number }) {
   const t = useT();
   const value = typed(text, t, at, perSecond);
   const typing = t >= at && value.length < text.length;
   return (
-    <div className="form-group">
+    <div data-demo={id} className="form-group">
       <label>{label}</label>
       <input type="text" readOnly value={value + (typing ? '|' : '')} placeholder={`Vul ${label.toLowerCase()} in`} />
     </div>
@@ -291,7 +318,7 @@ function Paper({
           <span>Voorbeeldlaan 12</span>
           <span>1234 CD Voorbeeld</span>
         </div>
-        <dl>
+        <dl data-demo="meta">
           {meta.map(([label, value]) => (
             <div key={label}>
               <dt>{label}</dt>
@@ -300,7 +327,7 @@ function Paper({
           ))}
         </dl>
       </div>
-      <table>
+      <table data-demo="lines">
         <thead>
           <tr>
             <th>Omschrijving</th>
@@ -323,7 +350,7 @@ function Paper({
           })}
         </tbody>
       </table>
-      <div className="site-paper-total">
+      <div data-demo="total" className="site-paper-total">
         <span>Totaal incl. btw</span>
         <strong>{euro(subtotal * 1.21)}</strong>
       </div>
@@ -379,7 +406,7 @@ function Chart({ at }: { at: number }) {
 function PluginRow({ icon, title, description, onAt }: { icon: ReactNode; title: string; description: string; onAt: number }) {
   const t = useT();
   return (
-    <div className="plugin">
+    <div data-demo="plugin" className="plugin">
       <span className="plugin-icon">{icon}</span>
       <span className="information">
         <span className="title">{title}</span>
@@ -424,7 +451,7 @@ function Chat({ messages }: { messages: { at: number; own?: boolean; text: strin
   const t = useT();
   return (
     <div className="site-chat">
-      <div className="whatsapp">
+      <div data-demo="chat" className="whatsapp">
         <div className="title">Synbased</div>
         {messages
           .filter(message => t >= message.at)
@@ -442,7 +469,7 @@ function Chat({ messages }: { messages: { at: number; own?: boolean; text: strin
 function MailList({ mails }: { mails: { at: number; from: string; subject: string; preview: string; time: string; unread?: boolean }[] }) {
   const t = useT();
   return (
-    <div className="block site-mail-list">
+    <div data-demo="mails" className="block site-mail-list">
       {mails
         .filter(mail => t >= mail.at)
         .map((mail) => (
@@ -467,13 +494,15 @@ const QUOTE_LINES: PaperLine[] = [
   { description: 'Plaatsen vloerverwarming 45 m²', amount: 3240, at: 1.9 },
   { description: 'Tegelen keuken en gang', amount: 1500, at: 3.5 },
 ];
-const QUOTE_DONE = QUOTE_LINES.map(line => ({ ...line, at: 0 }));
+// Al ingevuld: ruim voor het begin van de stap, dus zonder typen
+const QUOTE_DONE = QUOTE_LINES.map(line => ({ ...line, at: -99 }));
 const QUOTE_META: [string, string][] = [['Offertenummer', 'OFF-118'], ['Offertedatum', '14-10-2026'], ['Geldig tot', '13-11-2026']];
 
 const INVOICE_LINES: PaperLine[] = [
   { description: 'Badkamer tegelen', amount: 1650, at: 0.5 },
   { description: 'Kitwerk en afwerking', amount: 399.59, at: 1.8 },
 ];
+const INVOICE_DONE = INVOICE_LINES.map(line => ({ ...line, at: -99 }));
 
 /** Een scherm per stap; de naam is de slug van de module */
 const SCENES: Record<string, (() => ReactNode)[]> = {
@@ -512,7 +541,7 @@ const SCENES: Record<string, (() => ReactNode)[]> = {
                   <span className="site-paper-date">{typed('16-10-2026, Voorbeeld', t, 0.4, 30)}</span>
                   <span>Plaats / datum</span>
                 </div>
-                <div>
+                <div data-demo="signature">
                   <Signature at={1.2} />
                   <span>Handtekening opdrachtgever</span>
                 </div>
@@ -567,7 +596,7 @@ const SCENES: Record<string, (() => ReactNode)[]> = {
           <Paper
             title="Factuur"
             meta={[['Factuurnummer', sent ? 'FAC-087' : 'Volgt bij versturen'], ['Factuurdatum', '16-10-2026'], ['Vervaldatum', '30-10-2026']]}
-            lines={INVOICE_LINES.map(line => ({ ...line, at: 0 }))}
+            lines={INVOICE_DONE}
           />
           <Dialog from={1.8} until={4} title="Factuur versturen">
             <p>De klant krijgt een mail met de betaalgegevens en QR-code. Hij krijgt dan zijn nummer en is daarna niet meer te wijzigen.</p>
@@ -602,7 +631,7 @@ const SCENES: Record<string, (() => ReactNode)[]> = {
   customers: [
     () => (
       <AppPage active="customers" title="Nieuwe klant toevoegen" actions={<><Button kind="cancel">Annuleren</Button><Button id="save" pressAt={4.6}>Opslaan</Button></>}>
-        <div className="block form-section">
+        <div data-demo="form" className="block form-section">
           <div className="form-row">
             <Field label="Voornaam" text="Jan" at={0.4} />
             <Field label="Achternaam" text="Verhoef" at={0.9} />
@@ -636,9 +665,9 @@ const SCENES: Record<string, (() => ReactNode)[]> = {
               ]}
             />
           ) : (
-            <div className="block form-section">
-              <Field label="Naam" text="Familie Verhoef" at={0} />
-              <Field label="E-mail" text="verhoef@voorbeeld.nl" at={0} />
+            <div data-demo="form" className="block form-section">
+              <Field label="Naam" text="Familie Verhoef" at={-99} />
+              <Field label="E-mail" text="verhoef@voorbeeld.nl" at={-99} />
             </div>
           )}
           <Cursor path={[["tab", 0.5]]} />
@@ -687,20 +716,20 @@ const SCENES: Record<string, (() => ReactNode)[]> = {
       const picked = t >= 3.3;
       return (
         <AppPage active="quotes" title="Offerte bewerken" actions={<Button>Bijwerken</Button>}>
-          <div className="block form-section">
+          <div data-demo="form" className="block form-section">
             <div className="form-row">
               <div className="form-group site-suggest">
                 <label>Omschrijving</label>
                 <input type="text" readOnly value={picked ? 'Tegelwerk vloer' : typed('Tegel', t, 0.4, 8)} />
                 {t >= 1.2 && !picked && (
-                  <div className="site-suggestions site-appear">
+                  <div data-demo="suggest" className="site-suggestions site-appear">
                     <span data-demo="suggestion" className="active">Tegelwerk vloer <em>€ 42,00 per m²</em></span>
                     <span>Tegelwerk wand <em>€ 48,00 per m²</em></span>
                   </div>
                 )}
               </div>
               <Field label="Aantal" text={picked ? '45' : ''} at={3.4} />
-              <div className="form-group">
+              <div data-demo="amount" className="form-group">
                 <label>Bedrag</label>
                 <input type="text" readOnly value={t >= 3.8 ? '€ 1.890,00' : ''} />
               </div>
@@ -729,7 +758,7 @@ const SCENES: Record<string, (() => ReactNode)[]> = {
       const reading = t >= 2.2 && t < 3.4;
       return (
         <AppPage active="expenses" title="Kosten toevoegen" actions={<><Button kind="cancel">Annuleren</Button><Button>Opslaan</Button></>}>
-          <div className="block form-section">
+          <div data-demo="form" className="block form-section">
             <Dropzone fileAt={1.8} name={reading ? 'Wordt gelezen...' : 'bon-gamma.jpg'} size="412 kB" />
             <div className="form-row">
               <Field label="Leverancier" text="Gamma Zwolle" at={3.4} perSecond={40} />
@@ -743,7 +772,7 @@ const SCENES: Record<string, (() => ReactNode)[]> = {
     },
     () => (
       <AppPage active="expenses" title="Kosten toevoegen" actions={<><Button kind="cancel">Annuleren</Button><Button id="save" pressAt={3.4}>Opslaan</Button></>}>
-        <div className="block form-section">
+        <div data-demo="form" className="block form-section">
           <Field label="Categorie" text="Inkoop materiaal" at={0.3} perSecond={40} />
           <div className="form-row">
             <Field label="Bedrag excl. btw" text="82,64" at={0.9} />
@@ -787,7 +816,7 @@ const SCENES: Record<string, (() => ReactNode)[]> = {
       const t = useT();
       return (
         <AppPage active="bank" title="Bank" actions={<Button>Afschrift importeren</Button>}>
-          <BankTable start={0} linked mollieDone={t >= 4} />
+          <BankTable start={-99} linked mollieDone={t >= 4} />
           <Dialog from={0.4} until={4} title="Transactie koppelen">
             <p>16-10-2026 · € 1.204,10 · Mollie B.V.</p>
             <div className="form-section">
@@ -814,12 +843,12 @@ const SCENES: Record<string, (() => ReactNode)[]> = {
     ),
     () => (
       <AppPage active="vat" title="Btw-overzicht" actions={<Button>Exporteren</Button>}>
-        <VatTable at={0} highlight />
+        <VatTable at={-99} highlight />
       </AppPage>
     ),
     () => (
       <AppPage active="vat" title="Btw-overzicht" actions={<Button id="export" pressAt={1.6}>Exporteren</Button>}>
-        <VatTable at={0} />
+        <VatTable at={-99} />
         <Cursor path={[["export", 0.6]]} />
         <Toast at={1.9} title="Gedownload" message="Btw-overzicht Q3 2026.csv" />
       </AppPage>
@@ -853,7 +882,7 @@ const SCENES: Record<string, (() => ReactNode)[]> = {
               { at: 1.4, cells: [<strong key="s">Kosten</strong>, '', ''] },
               { at: 1.7, cells: ['7000', 'Inkoop materiaal', '€ 24.310,00'] },
               { at: 2.0, cells: ['4300', 'Auto en vervoer', '€ 5.120,00'] },
-              { at: 2.5, cells: ['', <strong key="s">Winst</strong>, <strong key="v">€ 64.550,00</strong>], highlight: true },
+              { at: 2.5, id: 'result', cells: ['', <strong key="s">Winst</strong>, <strong key="v">€ 64.550,00</strong>], highlight: true },
             ]}
           />
         </div>
@@ -862,7 +891,7 @@ const SCENES: Record<string, (() => ReactNode)[]> = {
     () => (
       <AppPage active="reports" title="Jaarcijfers" actions={<Button id="export" pressAt={1.6}>Grootboek exporteren</Button>}>
         <Stats
-          at={0}
+          at={-99}
           items={[
             { label: 'Omzet', value: 96420, note: 'Exclusief btw, 2026' },
             { label: 'Kosten', value: 31870, note: 'Exclusief aftrekbare btw' },
@@ -895,7 +924,9 @@ const SCENES: Record<string, (() => ReactNode)[]> = {
             <h2>Omzet</h2>
           </div>
           <RevenueLegend at={0.3} />
-          <Chart at={0.6} />
+          <div data-demo="chart">
+            <Chart at={0.6} />
+          </div>
         </div>
       </AppPage>
     ),
@@ -921,7 +952,7 @@ const SCENES: Record<string, (() => ReactNode)[]> = {
   notes: [
     () => (
       <AppPage active="notes" title="Nieuwe notitie aanmaken" actions={<><Button kind="cancel">Annuleren</Button><Button>Opslaan</Button></>}>
-        <div className="block form-section">
+        <div data-demo="form" className="block form-section">
           <Field label="Klant" text="Familie Verhoef" at={0.4} perSecond={30} />
           <Field label="Titel" text="Opmeting keuken" at={1.3} />
         </div>
@@ -931,7 +962,7 @@ const SCENES: Record<string, (() => ReactNode)[]> = {
       const t = useT();
       return (
         <AppPage active="notes" title="Notitie bewerken" actions={<Button>Opslaan</Button>}>
-          <div className="block site-note">
+          <div data-demo="note" className="block site-note">
             <h3>Opmeting keuken</h3>
             <ul>
               {['Keuken 4,20 × 3,10 m', 'Gang 6,80 × 1,20 m', 'Oude tegels eruit, vloerverwarming erin'].map((line, index) =>
@@ -968,7 +999,7 @@ const SCENES: Record<string, (() => ReactNode)[]> = {
     () => (
       <Chat
         messages={[
-          { at: 0, own: true, text: 'Familie Verhoef, Voorbeeldlaan 12. Keuken en gang 45 m² oude tegels eruit, vloerverwarming en opnieuw tegelen.' },
+          { at: -99, own: true, text: 'Familie Verhoef, Voorbeeldlaan 12. Keuken en gang 45 m² oude tegels eruit, vloerverwarming en opnieuw tegelen.' },
           { at: 1.4, text: 'Offerte OFF-118 staat als concept klaar voor Familie Verhoef, € 7.308,40.' },
         ]}
       />
@@ -994,7 +1025,7 @@ const SCENES: Record<string, (() => ReactNode)[]> = {
     ),
     () => (
       <AppPage active="inbox" title="Omzetten naar offerte" actions={<Button>Offerte maken</Button>}>
-        <div className="block form-section">
+        <div data-demo="form" className="block form-section">
           <Field label="Klant" text="Familie Verhoef (nieuw)" at={0.3} perSecond={40} />
           <DataTable
             headers={['Regel', 'Prijs', 'Op basis van']}
@@ -1012,7 +1043,7 @@ const SCENES: Record<string, (() => ReactNode)[]> = {
       const reading = t >= 1.2 && t < 2.6;
       return (
         <AppPage active="expenses" title="Kosten toevoegen" actions={<Button>Opslaan</Button>}>
-          <div className="block form-section">
+          <div data-demo="form" className="block form-section">
             <Dropzone fileAt={0.6} name={reading ? 'Wordt gelezen...' : 'bon-bouwmaat.pdf'} size="96 kB" />
             <div className="form-row">
               <Field label="Leverancier" text="Bouwmaat Utrecht" at={2.6} perSecond={40} />
@@ -1047,7 +1078,7 @@ const SCENES: Record<string, (() => ReactNode)[]> = {
         <Paper
           title="Factuur"
           meta={[['Factuurnummer', 'FAC-087'], ['Vervaldatum', '30-10-2026']]}
-          lines={INVOICE_LINES.map(line => ({ ...line, at: 0 }))}
+          lines={INVOICE_DONE}
         />
         <div className="site-public-bar">
           <span className="autosave-status">Betaal met iDEAL, Bancontact of de QR-code</span>
@@ -1099,7 +1130,7 @@ const SCENES: Record<string, (() => ReactNode)[]> = {
       const t = useT();
       return (
         <div className="site-public site-consent">
-          <div className="block">
+          <div data-demo="consent" className="block">
             <strong>Rabobank</strong>
             <p>Synbased (via GoCardless) wil 90 dagen je rekeninginformatie en transacties lezen.</p>
             <DataTable headers={['Rekening', 'IBAN']} rows={[{ cells: ['Zakelijke rekening', 'NL02 RABO 0123 4567 89'] }]} />
@@ -1141,6 +1172,95 @@ function RevenueLegend({ at }: { at: number }) {
   );
 }
 
+/**
+ * De camera per scène, zoals in een productvideo: [doel, moment, zoom]. Op
+ * elk moment zoomt hij soepel in op het element met data-demo="doel"; null
+ * is weer het hele scherm. Zonder pad blijft hij op het hele scherm.
+ */
+type CameraPath = [string | null, number, number?][];
+
+const MAIL_CAMERAS: CameraPath[] = [
+  [['plugin', 0.3, 1.8], ['toast', 2.7, 1.8], [null, 4.5]],
+  [['mails', 0.2, 1.4], [null, 3.5]],
+  [['new', 0.4, 2], ['event', 2.1, 1.9], [null, 4.5]],
+];
+
+const CAMERAS: Record<string, CameraPath[]> = {
+  quotes: [
+    [['lines', 0.3, 1.6], ['total', 4.9, 1.9], [null, 6.2]],
+    [['send', 0.4, 1.9], ['dialog', 2, 1.6], [null, 3.9], ['toast', 4.3, 1.9], [null, 6.2]],
+    [['signature', 0.8, 1.8], ['sign', 3.2, 2], [null, 5.4]],
+    [['table', 0.4, 1.5], ['convert', 2.2, 2], ['toast', 3.8, 1.9], [null, 5.8]],
+  ],
+  invoices: [
+    [['lines', 0.3, 1.7], ['meta', 3.4, 2], [null, 5.4]],
+    [['send', 0.4, 1.9], ['dialog', 2, 1.6], ['meta', 4.1, 2], [null, 6]],
+    [['table', 0.6, 1.6], ['toast', 2.6, 1.9], [null, 5]],
+  ],
+  customers: [
+    [['form', 0.2, 1.4], ['save', 3.4, 2], ['toast', 5, 1.9], [null, 6.5]],
+    [['tab', 0.4, 2], ['table', 2, 1.5], [null, 4.5]],
+    [['lines', 0.5, 1.8], [null, 4]],
+  ],
+  products: [
+    [['dialog', 0.4, 1.6], ['save', 2.8, 2], ['table', 4.3, 1.5], [null, 6]],
+    [['suggest', 0.4, 1.9], ['amount', 3.6, 1.9], [null, 5.5]],
+    [['table', 0.6, 1.8], ['toast', 2.6, 1.9], [null, 4.5]],
+  ],
+  expenses: [
+    [['dropzone', 0.4, 1.6], ['form', 3.2, 1.5], ['toast', 4.2, 1.9], [null, 6]],
+    [['form', 0.2, 1.5], ['save', 2.3, 2], ['toast', 3.9, 1.9], [null, 5.8]],
+    [['vat', 0.3, 1.4], [null, 4]],
+  ],
+  bank: [
+    [['dialog', 0.4, 1.6], ['table', 3.3, 1.4], ['toast', 4.4, 1.9], [null, 6]],
+    [['table', 0.3, 1.6], [null, 4]],
+    [['dialog', 0.6, 1.7], ['save', 2.6, 2], ['table', 4.2, 1.5], [null, 6]],
+  ],
+  vat: [
+    [['vat', 0.3, 1.4], [null, 3.5]],
+    [['due', 0.5, 2], [null, 4.5]],
+    [['export', 0.4, 2], ['toast', 2, 1.9], [null, 4.5]],
+  ],
+  reports: [
+    [['stats', 0.3, 1.5], [null, 3.5]],
+    [['table', 0.3, 1.4], ['result', 2.6, 2], [null, 4.5]],
+    [['export', 0.4, 2], ['toast', 2, 1.9], [null, 4.5]],
+  ],
+  dashboard: [
+    [['stats', 0.2, 1.5], [null, 3]],
+    [['chart', 0.3, 1.4], [null, 4.2]],
+    [['table', 0.3, 1.5], ['toast', 1.9, 1.9], [null, 4.5]],
+  ],
+  notes: [
+    [['form', 0.3, 1.6], [null, 3.5]],
+    [['note', 0.3, 1.8], [null, 5]],
+    [['table', 0.3, 1.6], [null, 3.5]],
+  ],
+  google: MAIL_CAMERAS,
+  microsoft: MAIL_CAMERAS,
+  whatsapp: [
+    [['chat', 0.2, 1.3], [null, 5]],
+    [['chat', 0.2, 1.3], [null, 4.5]],
+    [['table', 0.3, 1.6], [null, 3.5]],
+  ],
+  ai: [
+    [['mails', 0.2, 1.5], ['convert', 1.2, 2], [null, 3.6]],
+    [['form', 0.2, 1.4], [null, 4]],
+    [['dropzone', 0.3, 1.6], ['form', 2.5, 1.5], ['toast', 3, 1.9], [null, 5]],
+  ],
+  mollie: [
+    [['dialog', 0.5, 1.7], ['install', 1.8, 2], ['plugin', 3.3, 1.8], [null, 5]],
+    [['pay', 0.4, 2], [null, 3]],
+    [['table', 0.6, 1.7], ['toast', 1.4, 1.9], [null, 4]],
+  ],
+  'bank-connection': [
+    [['dialog', 0.4, 1.7], ['link', 2, 2], [null, 4.5]],
+    [['consent', 0.6, 1.9], [null, 3.5]],
+    [['table', 0.3, 1.4], ['toast', 1.8, 1.9], [null, 4.5]],
+  ],
+};
+
 /** Een prijs die van 42 naar 44 gaat */
 function PriceChange() {
   const t = useT();
@@ -1152,7 +1272,7 @@ function VatTable({ at, highlight = false }: { at: number; highlight?: boolean }
   const t = useT();
   const amount = (value: number, start: number) => euro(counted(value, t, at + start));
   return (
-    <div className="block">
+    <div data-demo="vat" className="block">
       <div className="header">
         <h2>Aangifte</h2>
       </div>
@@ -1163,7 +1283,7 @@ function VatTable({ at, highlight = false }: { at: number; highlight?: boolean }
           { at: at + 0.3, cells: ['1b', 'Leveringen/diensten belast met laag tarief', amount(2150, 0.3), amount(193.5, 0.3)] },
           { at: at + 0.6, cells: ['5a', 'Verschuldigde btw', '', amount(4023.9, 0.6)] },
           { at: at + 0.9, cells: ['5b', 'Voorbelasting', '', amount(1112.45, 0.9)], highlight },
-          { at: at + 1.2, cells: ['', <strong key="s">Te betalen</strong>, '', <strong key="v">{amount(2911.45, 1.2)}</strong>], highlight },
+          { at: at + 1.2, id: 'due', cells: ['', <strong key="s">Te betalen</strong>, '', <strong key="v">{amount(2911.45, 1.2)}</strong>], highlight },
         ]}
       />
     </div>
@@ -1220,7 +1340,7 @@ function mailScenes(name: string, icon: ReactNode, description: string, calendar
               <div key={day}>
                 <span className="placeholder">{day}</span>
                 {index === 0 && <span className="site-event">08:00 Start badkamer J. Dekker</span>}
-                {index === 3 && t >= 2 && <span className="site-event site-appear">09:00 Opmeten Familie Verhoef</span>}
+                {index === 3 && t >= 2 && <span data-demo="event" className="site-event site-appear">09:00 Opmeten Familie Verhoef</span>}
               </div>
             ))}
           </div>
@@ -1240,15 +1360,20 @@ export default function ModuleDemo({ module }: { module: SiteModule }) {
   const scenes = SCENES[module.slug] || [];
   const [active, setActive] = useState(0);
   const [t, setT] = useState(0);
-  const [zoom, setZoom] = useState(0.6);
-  const windowRef = useRef<HTMLDivElement>(null);
+  const [fit, setFit] = useState(0.6);
+  const [camera, setCamera] = useState({ x: 0, y: 0, scale: 1 });
+  const [reduced, setReduced] = useState(false);
+  const screenRef = useRef<HTMLDivElement>(null);
+  const cameraRef = useRef<HTMLDivElement>(null);
   const [root, setRoot] = useState<HTMLDivElement | null>(null);
 
-  useEffect(() => setRoot(windowRef.current), []);
+  useEffect(() => {
+    setRoot(cameraRef.current);
+    setReduced(window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  }, []);
 
   // De tijd per stap: elke 50 ms een tik, bij een nieuwe stap weer vanaf nul
   useEffect(() => {
-    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (reduced) {
       setT(99);
       return;
@@ -1257,7 +1382,7 @@ export default function ModuleDemo({ module }: { module: SiteModule }) {
     setT(0);
     const timer = setInterval(() => setT((performance.now() - started) / 1000), 50);
     return () => clearInterval(timer);
-  }, [active]);
+  }, [active, reduced]);
 
   // Na de tijd van een stap door naar de volgende
   useEffect(() => {
@@ -1267,12 +1392,38 @@ export default function ModuleDemo({ module }: { module: SiteModule }) {
 
   // De app passend in het venster: verkleind tot de breedte die er is
   useEffect(() => {
-    const element = windowRef.current;
+    const element = screenRef.current;
     if (!element) return;
-    const observer = new ResizeObserver(() => setZoom(element.clientWidth / BASE_WIDTH));
+    const observer = new ResizeObserver(() => setFit(element.clientWidth / BASE_WIDTH));
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
+
+  // De camera: het laatste punt op het pad dat al begonnen is
+  const path = reduced ? [] : CAMERAS[module.slug]?.[active] || [];
+  const shot = [...path].reverse().find(([, at]) => t >= at);
+  const shotKey = shot ? `${shot[0]}-${shot[1]}` : 'all';
+  // Staat het doel er nog niet (het verschijnt later), dan blijft de camera elke kwart seconde kijken
+  const [waiting, setWaiting] = useState(false);
+  const retry = waiting ? Math.floor(t * 4) : 0;
+
+  useEffect(() => {
+    if (!shot || !shot[0] || !root) {
+      setWaiting(false);
+      setCamera({ x: 0, y: 0, scale: 1 });
+      return;
+    }
+    const element = root.querySelector<HTMLElement>(`[data-demo="${shot[0]}"]`);
+    setWaiting(!element);
+    if (!element) return;
+    const box = positionIn(element, root);
+    const scale = shot[2] || 1.6;
+    // Het doel in het midden, maar nooit voorbij de rand van de app
+    const x = Math.min(0, Math.max(BASE_WIDTH - BASE_WIDTH * scale, BASE_WIDTH / 2 - (box.x + box.width / 2) * scale));
+    const y = Math.min(0, Math.max(APP_HEIGHT - APP_HEIGHT * scale, APP_HEIGHT / 2 - (box.y + box.height / 2) * scale));
+    setCamera({ x, y, scale });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shotKey, root, active, retry]);
 
   const Scene = scenes[active];
 
@@ -1307,15 +1458,21 @@ export default function ModuleDemo({ module }: { module: SiteModule }) {
         </div>
         <div
           className="site-window-screen"
-          ref={windowRef}
+          ref={screenRef}
           // Zo hoog als de verkleinde app, zodat er niets wordt afgeknipt en niets leeg blijft
-          style={{ height: Math.round(APP_HEIGHT * zoom) }}
+          style={{ height: Math.round(APP_HEIGHT * fit) }}
         >
-          <DemoTime.Provider value={{ t, root, zoom }}>
-            <div key={active} className="site-window-zoom" style={{ zoom }}>
-              {Scene && <Scene />}
+          <div className="site-window-fit" style={{ transform: `scale(${fit})` }}>
+            <div
+              ref={cameraRef}
+              className="site-camera"
+              style={{ transform: `translate(${camera.x}px, ${camera.y}px) scale(${camera.scale})` }}
+            >
+              <DemoTime.Provider value={{ t, root }}>
+                <Fragment key={active}>{Scene && <Scene />}</Fragment>
+              </DemoTime.Provider>
             </div>
-          </DemoTime.Provider>
+          </div>
         </div>
       </div>
     </div>
